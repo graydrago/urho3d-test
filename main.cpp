@@ -17,11 +17,14 @@ using namespace Urho3D;
 
 class Main : public Application {
     URHO3D_OBJECT(Main, Application);
+
     protected:
         SharedPtr<Scene> m_scene;
+        Node* m_box;
+        float m_angle;
 
     public:
-        Main(Context* ctx) : Application(ctx) {};
+        Main(Context* ctx) : Application(ctx), m_angle(0) {};
 
         void Setup() {
             engineParameters_["FullScreen"]=false;
@@ -38,9 +41,9 @@ class Main : public Application {
 
             // Box
             {
-                Node* node = m_scene->CreateChild("Box");
-                node->SetPosition({0, 0, 0});
-                StaticModel* box = node->CreateComponent<StaticModel>();
+                m_box = m_scene->CreateChild("Box");
+                m_box->SetPosition({0, 0, 0});
+                StaticModel* box = m_box->CreateComponent<StaticModel>();
                 box->SetModel(cache->GetResource<Model>("some.mtl"));
                 box->SetMaterial(cache->GetResource<Material>("Materials/DefaultGrey.xml"));
                 box->SetCastShadows(true);
@@ -71,7 +74,24 @@ class Main : public Application {
             auto renderer = GetSubsystem<Renderer>();
             SharedPtr<Viewport> viewport(new Viewport(context_, m_scene, camera));
             renderer->SetViewport(0, viewport);
+
+            SubscribeToEvents();
         }
+
+
+    void SubscribeToEvents()
+    {
+        // Subscribe HandleUpdate() function for processing update events
+        SubscribeToEvent(E_UPDATE, URHO3D_HANDLER(Main, HandleUpdate));
+    }
+
+
+    void HandleUpdate(StringHash eventType, VariantMap& eventData) {
+        using namespace Update;
+        //float timeStep = eventData[P_TIMESTEP].GetFloat();
+        m_box->SetRotation({0, m_angle, 0});
+        m_angle += 0.4;
+    }
 };
 
 
