@@ -1,4 +1,6 @@
 cmake_minimum_required(VERSION 3.5)
+set(URHO3D_HOME "" CACHE STRING "The path to Urho3D home directory.")
+set_property(CACHE URHO3D_HOME PROPERTY STRINGS "")
 
 project(index)
 
@@ -33,7 +35,7 @@ if(EMSCRIPTEN)
   add_flag("--emrun")
   add_flag("--preload-file ${PROJECT_SOURCE_DIR}/data@/")
   add_flag("-O2")
-  target_link_libraries( ${PROJECT_NAME} ${URHO3D_LIB} GL GLEW)
+  target_link_libraries( ${PROJECT_NAME} ${URHO3D_LIB} GL)
 else()
   message("Linux Build")
 
@@ -43,6 +45,8 @@ else()
       link_libraries(${GLEW_LIBRARIES})
   endif()
 
+  include_directories(${URHO3D_HOME}/include/Urho3D/ThirdParty/)
+
   execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink
           "${CMAKE_SOURCE_DIR}/data/CoreData"
           "${CMAKE_BINARY_DIR}/CoreData")
@@ -51,6 +55,6 @@ else()
           "${CMAKE_SOURCE_DIR}/data/Data"
           "${CMAKE_BINARY_DIR}/Data")
 
-  target_link_libraries( ${PROJECT_NAME} ${URHO3D_LIB} GL GLEW dl pthread)
+  target_link_libraries( ${PROJECT_NAME} ${URHO3D_LIB} GL dl pthread)
 endif()
 
