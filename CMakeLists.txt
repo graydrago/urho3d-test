@@ -18,7 +18,8 @@ add_flag("-std=c++11")
 add_flag("-Wall")
 #add_flag("-v")
 
-include_directories("${URHO3D_HOME}/include")
+include_directories(${URHO3D_HOME}/include)
+include_directories(${URHO3D_HOME}/include/Urho3D/ThirdParty/)
 
 if(EMSCRIPTEN)
   message("Emscripten Build")
@@ -44,8 +45,6 @@ else()
       include_directories(${GLEW_INCLUDE_DIRS})
       link_libraries(${GLEW_LIBRARIES})
   endif()
-
-  include_directories(${URHO3D_HOME}/include/Urho3D/ThirdParty/)
 
   execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink
           "${CMAKE_SOURCE_DIR}/data/CoreData"

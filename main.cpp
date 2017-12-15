@@ -9,17 +9,34 @@
 #include <Urho3D/Graphics/Model.h>
 #include <Urho3D/Graphics/Material.h>
 #include <Urho3D/Graphics/DebugRenderer.h>
+#include <Urho3D/Graphics/Texture2D.h>
+#include <Urho3D/Graphics/StaticModel.h>
 #include <Urho3D/Physics/RigidBody.h>
 #include <Urho3D/Physics/CollisionShape.h>
 #include <Urho3D/Physics/PhysicsWorld.h>
 #include <Urho3D/Engine/Application.h>
 #include <Urho3D/Input/Input.h>
 #include <Urho3D/Math/MathDefs.h>
+#include <Urho3D/Math/Ray.h>
 #include <Urho3D/IO/Log.h>
+#include <Urho3D/UI/UI.h>
+#include <Urho3D/UI/Text.h>
+#include <Urho3D/UI/Font.h>
+#include <Urho3D/UI/Sprite.h>
 #include <Urho3D/Resource/ResourceCache.h>
-#include <Urho3D/Graphics/StaticModel.h>
+#include <unordered_map>
+#include <vector>
+#include <cmath>
 
 using namespace Urho3D;
+
+
+struct InputState {
+    bool just_pressed = false;
+    bool still_pressed = false;
+    bool just_released = false;
+    bool still_released = true;
+};
 
 
 class Main : public Application {
@@ -30,6 +47,12 @@ class Main : public Application {
         Node* m_box;
         Node* m_floor;
         Node* m_camera_node;
+        Text* m_text;
+        Camera* m_camera;
+        std::unordered_map<int, InputState> m_input_state;
+        std::vector<Node*> m_boxes;
+
+        enum class player_state { jump, fall, stay };
         float m_angle;
 
 
@@ -41,6 +64,14 @@ class Main : public Application {
             engineParameters_["WindowWidth"]=1280;
             engineParameters_["WindowHeight"]=720;
             engineParameters_["WindowResizable"]=true;
+
+            InputState some;
+            m_input_state.insert({KEY_W, some});
+            m_input_state.insert({KEY_A, some});
+            m_input_state.insert({KEY_S, some});
+            m_input_state.insert({KEY_D, some});
+            m_input_state.insert({KEY_SPACE, some});
+            m_input_state.insert({MOUSEB_LEFT, some});
         }
 
         void Start() {
@@ -52,16 +83,48 @@ class Main : public Application {
             m_scene->CreateComponent<DebugRenderer>();
 
             // Box
-            {
+            auto yellow = cache->GetResource<Material>("Materials/Material.xml")->Clone();
+            yellow->SetShaderParameter("MatDiffColor", Color(1.f, 0.86f, 0.f));
+            for (int i = 0; i < 10; i++) {
                 m_box = m_scene->CreateChild("Box");
-                m_box->SetPosition({0, 0, 0});
+                m_box->SetPosition({i * 3.f, 5, 0});
                 StaticModel* box = m_box->CreateComponent<StaticModel>();
                 box->SetModel(cache->GetResource<Model>("box.mtl"));
-                box->SetMaterial(cache->GetResource<Material>("Materials/Material.xml"));
-                box->SetCastShadows(true);
-                m_box->CreateComponent<RigidBody>();
+                auto m = cache->GetResource<Material>("Materials/Material.xml")->Clone();
+                m->SetShaderParameter("MatDiffColor", Color(0, i/10.f, 0));
+                //box->SetMaterial(cache->GetResource<Material>("Materials/Material.xml"));
+                box->SetMaterial(m);
+                //box->SetCastShadows(true);
+                auto body = m_box->CreateComponent<RigidBody>();
+                body->SetMass(1000);
+                body->SetFriction(1);
                 auto* shape = m_box->CreateComponent<CollisionShape>();
-                shape->SetBox({1, 1, 1});
+                shape->SetBox({2, 2, 2});
+                m_boxes.push_back(m_box);
+
+                auto es_node = m_box->CreateChild("Exclamation Mark");
+                Quaternion q;
+                q.FromAngleAxis(90, {1, 0, 0});
+                es_node->SetRotation(q);
+                es_node->SetPosition({0, 1.2, 0});
+                auto es = es_node->CreateComponent<StaticModel>();
+                es->SetModel(cache->GetResource<Model>("exclamation_mark.mtl"));
+                es->SetMaterial(yellow);
+            }
+
+            {
+                UI* ui = GetSubsystem<UI>();
+                m_text = ui->GetRoot()->CreateChild<Text>();
+                m_text->SetFont(cache->GetResource<Font>("Fonts/Anonymous Pro.ttf"), 15);
+                m_text->SetHorizontalAlignment(HA_LEFT);
+                m_text->SetVerticalAlignment(VA_TOP);
+                m_text->SetPosition(100, 100);
+
+                BorderImage* yourImage_ = ui->GetRoot()->CreateChild<BorderImage>();
+                auto* t = cache->GetResource<Texture2D>("Textures/aim.png");
+                yourImage_->SetTexture(t);
+                yourImage_->SetSize(10,10);
+                yourImage_->SetAlignment(HA_CENTER,VA_CENTER);
             }
 
             // Floor
@@ -76,12 +139,7 @@ class Main : public Application {
                 model->SetCastShadows(true);
                 /*auto* body = */m_floor->CreateComponent<RigidBody>();
                 auto* shape = m_floor->CreateComponent<CollisionShape>();
-                //shape->SetStaticPlane(m_floor->GetPosition(), m_floor->GetRotation());
                 shape->SetTriangleMesh(cache->GetResource<Model>("plane.mtl"));//,
-                                       //0,
-                                       //m_floor->GetScale(),
-                                       //m_floor->GetPosition(),
-                                       //m_floor->GetRotation());
             }
 
             // Light
@@ -111,8 +169,10 @@ class Main : public Application {
                 body->SetAngularFactor({0, 0, 0});
                 body->SetLinearDamping(0.2);
                 CollisionShape* shape = t_node->CreateComponent<CollisionShape>();
-                shape->SetCapsule(2, 2);
+                shape->SetCapsule(1.5, 1);
+                shape->SetMargin(5);
                 m_camera_node = t_node;
+                m_camera = camera;
             }
 
             auto renderer = GetSubsystem<Renderer>();
@@ -133,8 +193,38 @@ class Main : public Application {
     void HandleUpdate(StringHash /*eventType*/, VariantMap& /*eventData*/) {
         using namespace Update;
 
-        auto r_camera = m_camera_node->GetChildren()[0];
         auto* input = GetSubsystem<Input>();
+
+        for (auto& is_pair : m_input_state) {
+            auto& is = is_pair.second;
+            if (input->GetKeyDown(is_pair.first)) {
+                if (is.just_released || is.still_released) {
+                    is.just_pressed = true;
+                    is.still_pressed = false;
+                    is.just_released = false;
+                    is.still_released = false;
+                } else if (is.just_pressed) {
+                    is.just_pressed = false;
+                    is.still_pressed = true;
+                    is.just_released = false;
+                    is.still_released = false;
+                }
+            } else {
+                if (is.just_pressed || is.still_pressed) {
+                    is.just_pressed = false;
+                    is.still_pressed = false;
+                    is.just_released = true;
+                    is.still_released = false;
+                } else {
+                    is.just_pressed = false;
+                    is.still_pressed = false;
+                    is.just_released = false;
+                    is.still_released = true;
+                }
+            };
+        }
+
+        auto r_camera = m_camera_node->GetChildren()[0];
         auto smoothDeltaTime = GetSubsystem<Engine>()->GetNextTimeStep();
         auto mouse_offset = input->GetMouseMove();
         auto rot = r_camera->GetRotation();
@@ -158,8 +248,29 @@ class Main : public Application {
         if (input->GetKeyDown(KEY_D)) direction.x_ =  1;
         PODVector<RigidBody *> collisions;
         rb->GetCollidingBodies(collisions);
-        if (collisions.Size() > 0) {
-          if (input->GetKeyDown(KEY_SPACE)) rb->ApplyImpulse({0, 60, 0});
+        if (m_input_state[KEY_SPACE].just_pressed && collisions.Size() > 0) {
+          if (input->GetKeyDown(KEY_SPACE)) rb->ApplyImpulse({0, 400, 0});
+          m_text->SetText("Jump");
+        }
+
+        //if (m_input_state[MOUSEB_LEFT].just_pressed && collisions.Size() > 0) {
+            //m_text->SetText("Shot");
+        //} else {
+            //m_text->SetText("!!!");
+        //}
+        //
+        if (input->GetMouseButtonPress(MOUSEB_LEFT)) {
+            auto ray = m_camera->GetScreenRay(0.5, 0.5);
+            for (auto box : m_boxes) {
+                auto shape = box->GetComponent<CollisionShape>();
+                float dist = ray.HitDistance(shape->GetWorldBoundingBox());
+                if (std::isinf(dist)) {
+                } else {
+                    auto rb = box->GetComponent<RigidBody>();
+                    rb->ApplyImpulse(ray.direction_ * 2000, box->WorldToLocal(ray.origin_ + ray.direction_ * dist));
+                    m_text->SetText("Shot");
+                }
+            }
         }
         direction.Normalize();
         auto cm = rot * direction * smoothDeltaTime * move_speed;
