@@ -8,6 +8,7 @@
 #include <Urho3D/Graphics/Viewport.h>
 #include <Urho3D/Graphics/Model.h>
 #include <Urho3D/Graphics/Material.h>
+#include <Urho3D/Graphics/Skybox.h>
 #include <Urho3D/Graphics/DebugRenderer.h>
 #include <Urho3D/Graphics/Texture2D.h>
 #include <Urho3D/Graphics/StaticModel.h>
@@ -85,6 +86,7 @@ class Main : public Application {
             // Box
             auto yellow = cache->GetResource<Material>("Materials/Material.xml")->Clone();
             yellow->SetShaderParameter("MatDiffColor", Color(1.f, 0.86f, 0.f));
+            yellow->SetShaderParameter("MatEmissiveColor", Color(1.f, 0.86f, 0.f));
             for (int i = 0; i < 10; i++) {
                 m_box = m_scene->CreateChild("Box");
                 m_box->SetPosition({i * 3.f, 5, 0});
@@ -94,7 +96,7 @@ class Main : public Application {
                 m->SetShaderParameter("MatDiffColor", Color(0, i/10.f, 0));
                 //box->SetMaterial(cache->GetResource<Material>("Materials/Material.xml"));
                 box->SetMaterial(m);
-                //box->SetCastShadows(true);
+                box->SetCastShadows(true);
                 auto body = m_box->CreateComponent<RigidBody>();
                 body->SetMass(1000);
                 body->SetFriction(1);
@@ -110,6 +112,14 @@ class Main : public Application {
                 auto es = es_node->CreateComponent<StaticModel>();
                 es->SetModel(cache->GetResource<Model>("exclamation_mark.mtl"));
                 es->SetMaterial(yellow);
+            }
+
+            // Skybox
+            {
+                auto node = m_scene->CreateChild("Sky");
+                auto skybox = node->CreateComponent<Skybox>();
+                skybox->SetModel(cache->GetResource<Model>("box.mtl"));
+                skybox->SetMaterial(cache->GetResource<Material>("Materials/Skybox.xml"));
             }
 
             {
@@ -136,7 +146,6 @@ class Main : public Application {
                 StaticModel* model = m_floor->CreateComponent<StaticModel>();
                 model->SetModel(cache->GetResource<Model>("plane.mtl"));
                 model->SetMaterial(cache->GetResource<Material>("Materials/Material.xml"));
-                model->SetCastShadows(true);
                 /*auto* body = */m_floor->CreateComponent<RigidBody>();
                 auto* shape = m_floor->CreateComponent<CollisionShape>();
                 shape->SetTriangleMesh(cache->GetResource<Model>("plane.mtl"));//,
@@ -253,12 +262,6 @@ class Main : public Application {
           m_text->SetText("Jump");
         }
 
-        //if (m_input_state[MOUSEB_LEFT].just_pressed && collisions.Size() > 0) {
-            //m_text->SetText("Shot");
-        //} else {
-            //m_text->SetText("!!!");
-        //}
-        //
         if (input->GetMouseButtonPress(MOUSEB_LEFT)) {
             auto ray = m_camera->GetScreenRay(0.5, 0.5);
             for (auto box : m_boxes) {
